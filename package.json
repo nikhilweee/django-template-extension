@@ -11,6 +11,12 @@
     "url": "git+https://github.com/jraylan/django-template-extension.git"
   },
   "homepage": "https://github.com/jraylan/django-template-extension#readme",
+  "contributors": [
+    {
+      "url": "https://github.com/nikhilweee",
+      "name": "Nikhil Verma"
+    }
+  ],
   "scripts": {
     "compile": "node esbuild.js",
     "compile:tsc": "tsc -p ./",
