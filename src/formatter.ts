@@ -22,12 +22,13 @@ function getXmlPlugin(): any | null {
  */
 export async function formatDjangoTemplate(text: string): Promise<string> {
     try {
+        const { masked, placeholders } = maskDjangoTagsForHTML(text);
         const options: prettier.Options = {
             parser: 'html',
             htmlWhitespaceSensitivity: 'ignore'
         };
-
-        return await prettier.format(text, options);
+        const formatted = await prettier.format(masked, options);
+        return restoreDjangoTagsFromHTML(formatted, placeholders);
     } catch (err) {
         console.error('formatDjangoTemplate failed:', err);
         return text;
@@ -90,6 +91,48 @@ export async function formatDjangoXML(text: string): Promise<string> {
 interface Placeholder {
     key: string;
     original: string;
+}
+
+const HTML_TAG_RE = /({{[\s\S]*?}}|{%[\s\S]*?%}|{#[\s\S]*?#})/g;
+
+/**
+ * Mask Django/Jinja template tags for HTML formatting.
+ * Lines containing only Django tags get HTML comment placeholders (<!-- ... -->),
+ * which Prettier treats as block-level and keeps on their own lines.
+ * Tags mixed with other content get plain-text placeholders safe for use
+ * inside HTML attribute values.
+ */
+function maskDjangoTagsForHTML(text: string): { masked: string; placeholders: Placeholder[] } {
+    const placeholders: Placeholder[] = [];
+    let i = 0;
+
+    const masked = text
+        .split('\n')
+        .map(line => {
+            // If stripping all Django tags leaves only whitespace, the line is block-level
+            const isBlockLevel = line.replace(HTML_TAG_RE, '').trim() === '';
+            HTML_TAG_RE.lastIndex = 0;
+            return line.replace(HTML_TAG_RE, match => {
+                const key = isBlockLevel ? `DJANGOBLOCK${i++}` : `DJANGOINLINE${i++}`;
+                placeholders.push({ key, original: match });
+                return isBlockLevel ? `<!-- ${key} -->` : key;
+            });
+        })
+        .join('\n');
+
+    return { masked, placeholders };
+}
+
+/**
+ * Restore Django/Jinja template tags masked by maskDjangoTagsForHTML
+ */
+function restoreDjangoTagsFromHTML(text: string, placeholders: Placeholder[]): string {
+    let restored = text;
+    for (const p of placeholders) {
+        const token = p.key.startsWith('DJANGOBLOCK') ? `<!-- ${p.key} -->` : p.key;
+        restored = restored.split(token).join(p.original);
+    }
+    return restored;
 }
 
 /**
